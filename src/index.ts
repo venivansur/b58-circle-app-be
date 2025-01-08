@@ -12,11 +12,7 @@ const app = express();
 const PORT = process.env.PORT;
 
 app.use(express.json());
-app.use(
-  cors({
-    origin: 'b58-circle-app-fe-venivansuryas-projects.vercel.app',
-  }),
-);
+app.use(cors());
 
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/', userRoutes);
