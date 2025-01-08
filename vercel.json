@@ -1,21 +1,18 @@
 {
-    "version": 2,
-    "builds": [
-      {
-        "src": "src/index.ts",
-        "use": "@vercel/node"
-      }
-    ],
-    "routes": [
-      {
-        "src": "/(.*)",
-        "dest": "/src/index.ts"
-      }
-    ],
-    "build": {
-      "env": {
-        "DATABASE_URL": "postgresql://b58circle_owner:HRfc5ZbpgN0u@ep-twilight-sunset-a1b319z3.ap-southeast-1.aws.neon.tech/b58circle?sslmode=require"
+  "version": 2,
+  "builds": [
+    {
+      "src": "src/index.ts",
+      "use": "@vercel/node",
+      "config": {
+        "maxDuration": 10
       }
     }
-  }
-  
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/src/index.ts"
+    }
+  ]
+}
