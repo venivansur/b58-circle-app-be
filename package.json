@@ -4,7 +4,8 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "nodemon src/index.ts",
-    "build": "tsc",   
+    "build": "tsc && prisma generate",
+    "prisma-generate": "prisma generate",   
     "start": "node dist/index.js",
     "prepare": "husky",
     "lint": "eslint --fix",
