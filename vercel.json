@@ -1,24 +1,18 @@
 {
-    "version": 2,
-    "builds": [
-      {
-        "src": "src/index.ts",
-        "use": "@vercel/node",
-        "config": {
-          "maxDuration": 10
-        }
+  "version": 2,
+  "builds": [
+    {
+      "src": "src/index.ts",
+      "use": "@vercel/node",
+      "config": {
+        "maxDuration": 10
       }
-    ],
-    "routes": [
-      {
-        "src": "/(.*)",
-        "dest": "/src/index.ts"
-      }
-    ],
-    "build": {
-      "commands": [
-        "prisma generate"
-      ]
     }
-  }
-  
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/src/index.ts"
+    }
+  ]
+}
