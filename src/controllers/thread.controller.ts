@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import prisma from '../prismaClient';
 import { uploadToCloudinary } from '../controllers/upload.controller';
+import cloudinary from '../claudinaryConfig';
 
 export const createThread = async (req: Request, res: Response) => {
   const { content } = req.body;
@@ -58,6 +59,7 @@ export const getAllThreads = async (req: Request, res: Response) => {
           select: {
             id: true,
             fullName: true,
+            username: true,
             profilePicture: true,
           },
         },
@@ -79,10 +81,13 @@ export const getAllThreads = async (req: Request, res: Response) => {
           },
         },
       },
+      orderBy: {
+        createdAt: 'desc',
+      },
     });
 
     if (!threads || threads.length === 0) {
-      return res.status(404).json({ error: 'Tidak ada thread ditemukan' });
+      return res.status(200).json({ threads: [] });
     }
 
     res.status(200).json({ threads });
@@ -95,11 +100,24 @@ export const getAllThreads = async (req: Request, res: Response) => {
 export const getThreadById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    console.log(`Fetching thread with ID: ${id}`);
+
+    if (!id || isNaN(Number(id))) {
+      console.log(`Invalid thread ID: ${id}`);
+      return res.status(400).json({ message: 'Invalid thread ID' });
+    }
 
     const thread = await prisma.thread.findUnique({
       where: { id: parseInt(id, 10) },
-      include: { replies: true, user: true },
+      include: {
+        replies: true,
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            profilePicture: true,
+          },
+        },
+      },
     });
 
     if (!thread) {
@@ -107,31 +125,83 @@ export const getThreadById = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Thread not found' });
     }
 
-    console.log('Thread found:', thread); // Log hasil query
     return res.status(200).json({ thread });
+  } catch (error: any) {
+    console.error('Error fetching thread:', {
+      message: error.message,
+      stack: error.stack,
+    });
+
+    return res
+      .status(500)
+      .json({ message: 'Server error', error: error.message });
+  }
+};
+
+export const deleteImage = async (publicId: string) => {
+  try {
+    const result = await cloudinary.uploader.destroy(publicId);
+    console.log('Delete Result:', result);
+    return result;
   } catch (error) {
-    console.error('Error fetching thread:', error);
-    return res.status(500).json({ error: 'Server error' });
+    console.error('Error deleting image:', error);
+    throw new Error('Error deleting image');
   }
 };
 
 export const updateThread = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { content } = req.body;
+  const file = req.file;
 
-  if (!content) {
-    return res.status(400).json({ error: 'Content is required' });
+  if (!content && !file) {
+    return res.status(400).json({ error: 'Content or image is required' });
   }
 
   try {
-    const thread = await prisma.thread.update({
+    const thread = await prisma.thread.findUnique({
       where: { id: parseInt(id) },
-      data: {
-        content,
-      },
     });
 
-    res.status(200).json({ message: 'Thread updated successfully', thread });
+    if (!thread) {
+      return res.status(404).json({ error: 'Thread not found' });
+    }
+
+    const updateData: any = {};
+    if (content) updateData.content = content;
+
+    if (thread.fileUrl) {
+      const publicId = thread.fileUrl.split('/').pop()?.split('.')[0];
+      if (publicId) {
+        const fullPublicId = `thread_pictures/${publicId}`;
+        console.log('Deleting image with publicId:', fullPublicId);
+
+        const deleteResult = await cloudinary.uploader.destroy(fullPublicId);
+
+        if (deleteResult.result === 'not found') {
+          console.error('Image not found or could not be deleted');
+        } else {
+          console.log('Image deleted successfully');
+        }
+      }
+    }
+
+    if (file) {
+      const cloudinaryResult = await uploadToCloudinary(
+        file,
+        'thread_pictures',
+      );
+      updateData.fileUrl = cloudinaryResult.url;
+    }
+
+    const updatedThread = await prisma.thread.update({
+      where: { id: parseInt(id) },
+      data: updateData,
+    });
+
+    res
+      .status(200)
+      .json({ message: 'Thread updated successfully', thread: updatedThread });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Something went wrong' });
@@ -219,8 +289,8 @@ export const createReply = async (req: Request, res: Response) => {
   const { content } = req.body;
   const userId = (req as any).user.id;
 
-  if (!content) {
-    return res.status(400).json({ error: 'Content is required' });
+  if (!content && !req.file) {
+    return res.status(400).json({ error: 'Content or file is required' });
   }
 
   try {
@@ -232,9 +302,22 @@ export const createReply = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Thread not found' });
     }
 
+    let fileUrl = null;
+    let fileName = null;
+    if (req.file) {
+      const { url, fileName: name } = await uploadToCloudinary(
+        req.file,
+        'replies_pictures',
+      );
+      fileUrl = url;
+      fileName = name;
+    }
+
     const reply = await prisma.reply.create({
       data: {
         content,
+        fileUrl,
+        fileName,
         userId,
         threadId: parseInt(threadId),
       },
@@ -242,7 +325,45 @@ export const createReply = async (req: Request, res: Response) => {
 
     res.status(201).json({ message: 'Reply created successfully', reply });
   } catch (error) {
-    console.error(error);
+    console.error('Error creating reply:', error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+};
+
+export const deleteReply = async (req: Request, res: Response) => {
+  const { threadId, replyId } = req.params;
+  const userId = (req as any).user.id;
+
+  try {
+    const thread = await prisma.thread.findUnique({
+      where: { id: parseInt(threadId) },
+    });
+
+    if (!thread) {
+      return res.status(404).json({ error: 'Thread not found' });
+    }
+
+    const reply = await prisma.reply.findUnique({
+      where: { id: parseInt(replyId) },
+    });
+
+    if (!reply) {
+      return res.status(404).json({ error: 'Reply not found' });
+    }
+
+    if (thread.userId !== userId && reply.userId !== userId) {
+      return res
+        .status(403)
+        .json({ error: 'You are not authorized to delete this reply' });
+    }
+
+    await prisma.reply.delete({
+      where: { id: parseInt(replyId) },
+    });
+
+    res.status(200).json({ message: 'Reply deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting reply:', error);
     res.status(500).json({ error: 'Something went wrong' });
   }
 };

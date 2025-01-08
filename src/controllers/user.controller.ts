@@ -71,6 +71,14 @@ export const updateUser = async (req: Request, res: Response) => {
   const { bio, fullName, username, profilePicture } = req.body;
 
   try {
+    const existingUser = await prisma.user.findFirst({
+      where: { username: username },
+    });
+
+    if (existingUser && existingUser.id !== parseInt(userId, 10)) {
+      return res.status(400).json({ error: 'Username already taken' });
+    }
+
     const updatedUser = await prisma.user.update({
       where: { id: parseInt(userId, 10) },
       data: {
@@ -137,62 +145,80 @@ export const deleteUser = async (req: Request, res: Response) => {
 export const toggleFollow = async (req: Request, res: Response) => {
   const { userId } = req.params;
   const currentUserId = (req as any).user.id;
+
   if (!userId || isNaN(Number(userId))) {
-    return res.status(400).json({ success: false, message: 'Invalid user ID' });
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid user ID',
+    });
   }
 
-  if (Number(userId) === currentUserId) {
-    return res
-      .status(400)
-      .json({ success: false, message: 'You cannot follow/unfollow yourself' });
+  const targetUserId = parseInt(userId, 10);
+
+  if (targetUserId === currentUserId) {
+    return res.status(400).json({
+      success: false,
+      message: 'You cannot follow/unfollow yourself',
+    });
   }
 
   try {
     const userExists = await prisma.user.findUnique({
-      where: { id: parseInt(userId, 10) },
+      where: { id: targetUserId },
     });
 
     if (!userExists) {
-      return res
-        .status(404)
-        .json({ success: false, message: 'User not found' });
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
     }
 
-    const existingFollow = await prisma.follower.findUnique({
-      where: {
-        followerId_followingId: {
-          followerId: currentUserId,
-          followingId: parseInt(userId, 10),
+    const result = await prisma.$transaction(async (tx) => {
+      const existingFollow = await tx.follower.findUnique({
+        where: {
+          followerId_followingId: {
+            followerId: currentUserId,
+            followingId: targetUserId,
+          },
         },
-      },
+      });
+
+      if (existingFollow) {
+        await tx.follower.delete({
+          where: { id: existingFollow.id },
+        });
+        return { action: 'unfollow' };
+      } else {
+        const follow = await tx.follower.create({
+          data: {
+            followerId: currentUserId,
+            followingId: targetUserId,
+          },
+        });
+        return { action: 'follow', data: follow };
+      }
     });
 
-    if (existingFollow) {
-      await prisma.follower.delete({
-        where: { id: existingFollow.id },
-      });
+    if (result.action === 'unfollow') {
       return res.status(200).json({
         success: true,
         message: 'Unfollowed successfully',
       });
     } else {
-      const follow = await prisma.follower.create({
-        data: {
-          followerId: currentUserId,
-          followingId: parseInt(userId, 10),
-        },
-      });
       return res.status(201).json({
         success: true,
         message: 'Followed successfully',
-        data: follow,
+        data: result.data,
       });
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in toggleFollow:', error);
+
     return res.status(500).json({
       success: false,
-      message: 'Something went wrong',
+      message: 'An unexpected error occurred',
+      error: error.message || 'Unknown error',
     });
   }
 };
@@ -292,7 +318,7 @@ export const getSuggestedUsers = async (req: Request, res: Response) => {
 
     res.status(200).json(sortedSuggestedUsers);
   } catch (error) {
-    console.error(error);
+    console.error('Error fetching suggested users:', error);
     res.status(500).json({ error: 'Something went wrong' });
   }
 };

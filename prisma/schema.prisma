@@ -20,6 +20,8 @@ model User {
   email          String     @unique
   password       String
   profilePicture String?    
+  resetPasswordToken  String? 
+  resetPasswordExpires DateTime? 
   status         UserStatus @default(ACTIVE) 
   isDeleted      Boolean    @default(false)
   profile        Profile?   @relation("UserProfile") 
@@ -69,6 +71,8 @@ model Reply {
   userId    Int
   threadId  Int
   content   String
+  fileUrl   String?  
+  fileName  String? 
   user      User     @relation("UserReplies", fields: [userId], references: [id])
   thread    Thread   @relation("ThreadReplies", fields: [threadId], references: [id])
   createdAt DateTime @default(now())
