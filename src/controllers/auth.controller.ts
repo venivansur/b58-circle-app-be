@@ -178,11 +178,9 @@ router.post('/forgot-password', async (req, res) => {
     });
 
     if (!user) {
-      return res
-        .status(200)
-        .json({
-          message: 'Jika akun ditemukan, email reset password akan dikirim.',
-        });
+      return res.status(200).json({
+        message: 'Jika akun ditemukan, email reset password akan dikirim.',
+      });
     }
 
     const resetToken = crypto.randomBytes(32).toString('hex');
@@ -204,7 +202,7 @@ router.post('/forgot-password', async (req, res) => {
       },
     });
 
-    const resetURL = `http://localhost:5173/reset-password?token=${resetToken}`;
+    const resetURL = `https://b58-circle-app-fe.vercel.app/reset-password?token=${resetToken}`;
 
     try {
       await transporter.sendMail({
@@ -219,11 +217,9 @@ router.post('/forgot-password', async (req, res) => {
         `,
       });
       console.log('Email berhasil dikirim ke', user.email);
-      res
-        .status(200)
-        .json({
-          message: 'Jika akun ditemukan, email reset password akan dikirim.',
-        });
+      res.status(200).json({
+        message: 'Jika akun ditemukan, email reset password akan dikirim.',
+      });
     } catch (error) {
       console.error('Gagal mengirim email:', error);
       res
